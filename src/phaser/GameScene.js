@@ -3,7 +3,7 @@
 
 import { BGM_INFO, GAME_DIMENSIONS, RESOURCE_PATHS } from "../constants.js";
 import { gameState, saveHighScore } from "../gameState.js";
-import { PLAYER_STATES } from "../enums/player-boss-states.js";
+import { PLAYER_STATES } from "../shared/enums/player-boss-states.js";
 import { triggerHaptic } from "../haptics.js";
 import {
     getDisplayedHighScore,

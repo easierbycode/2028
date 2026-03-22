@@ -439,10 +439,10 @@
          For Cordova builds, CI bundles src/phaser/boot-entry.js into
          lib/boot.bundle.js and replaces this block with a regular script. -->
     <script type="module">
-        import { gameState } from "./src/gameState.js";
-        import { initializeFirebaseScores } from "./src/firebaseScores.js";
+        import { gameState } from "./src/shared/gameState.js";
+        import { initializeFirebaseScores } from "./src/shared/firebaseScores.js";
         import { createPhaserGame } from "./src/phaser/PhaserGame.js";
-        import { Ϫ } from "./src/constants.js";
+        import { Ϫ } from "./src/shared/constants.js";
 
         // -----------------------------------------------------------------
         // Auto-hide Phaser audio load errors on iOS TestFlight

@@ -4,7 +4,7 @@
 
 import { GAME_DIMENSIONS } from "../../constants.js";
 import { gameState } from "../../gameState.js";
-import { PLAYER_STATES } from "../../enums/player-boss-states.js";
+import { PLAYER_STATES } from "../../shared/enums/player-boss-states.js";
 import { triggerHaptic } from "../../haptics.js";
 import { createShadow, updateShadowPosition } from "./Shadow.js";
 import { pollGamepads } from "../GamepadInput.js";
