@@ -1,7 +1,7 @@
 // src/phaser/game-objects/Bullet.js
 // Player bullet creation and movement — extracted from GameScene.shoot() / fixedUpdate bullet loop
 
-import { GAME_DIMENSIONS } from "../../constants.js";
+import { GAME_DIMENSIONS } from "../../shared/constants.js";
 
 var GW = GAME_DIMENSIONS.WIDTH;
 

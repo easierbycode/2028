@@ -1,12 +1,12 @@
-import { GAME_DIMENSIONS, LANG } from "../constants.js";
-import { gameState, saveHighScore } from "../gameState.js";
-import { submitHighScore } from "../firebaseScores.js";
+import { GAME_DIMENSIONS, LANG } from "../shared/constants.js";
+import { gameState, saveHighScore } from "../shared/gameState.js";
+import { submitHighScore } from "../shared/firebaseScores.js";
 import {
     getDisplayedHighScore,
     getWorldBestLabel,
     getHighScoreSyncText,
     getHighScoreSyncTint,
-} from "../highScoreUi.js";
+} from "../shared/highScoreUi.js";
 import { BigNumberDisplay } from "./ui/BigNumberDisplay.js";
 
 var GW = GAME_DIMENSIONS.WIDTH;

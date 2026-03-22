@@ -1,11 +1,11 @@
-import { GAME_DIMENSIONS, LANG } from "../constants.js";
-import { gameState } from "../gameState.js";
+import { GAME_DIMENSIONS, LANG } from "../shared/constants.js";
+import { gameState } from "../shared/gameState.js";
 import {
     getDisplayedHighScore,
     getWorldBestLabel,
     getHighScoreSyncText,
     getHighScoreSyncTint,
-} from "../highScoreUi.js";
+} from "../shared/highScoreUi.js";
 import { StaffRollPanel } from "./StaffRollPanel.js";
 import { pollGamepads } from "./GamepadInput.js";
 

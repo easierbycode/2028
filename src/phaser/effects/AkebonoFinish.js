@@ -1,4 +1,4 @@
-import { GAME_DIMENSIONS } from "../../constants.js";
+import { GAME_DIMENSIONS } from "../../shared/constants.js";
 
 var GCX = GAME_DIMENSIONS.CENTER_X;
 var GCY = GAME_DIMENSIONS.CENTER_Y;

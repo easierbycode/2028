@@ -1,0 +1,20 @@
+{
+  "name": "2028-ai",
+  "version": "1.0.0",
+  "private": true,
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "electron": "electron .",
+    "bundle:cordova": "npx esbuild src/phaser/boot-entry.js --bundle --format=iife --outfile=lib/boot.bundle.js",
+    "bundle:electron": "npx esbuild src/phaser/boot-entry.js --bundle --format=iife --outfile=electron/www/lib/boot.bundle.js",
+    "ps2:build": "cd src/ps2/deploy && bash build.sh"
+  },
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.24.0",
+    "vite": "^6.0.0"
+  }
+}

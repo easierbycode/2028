@@ -1,15 +1,15 @@
 // src/phaser/GameScene.js — slimmed coordinator
 // All subsystem logic extracted to game-objects/, bosses/, effects/, ui/
 
-import { BGM_INFO, GAME_DIMENSIONS, RESOURCE_PATHS } from "../constants.js";
-import { gameState, saveHighScore } from "../gameState.js";
+import { BGM_INFO, GAME_DIMENSIONS, RESOURCE_PATHS } from "../shared/constants.js";
+import { gameState, saveHighScore } from "../shared/gameState.js";
 import { PLAYER_STATES } from "../shared/enums/player-boss-states.js";
-import { triggerHaptic } from "../haptics.js";
+import { triggerHaptic } from "../shared/haptics.js";
 import {
     getDisplayedHighScore,
     getWorldBestLabel,
     getHighScoreSyncText,
-} from "../highScoreUi.js";
+} from "../shared/highScoreUi.js";
 
 // --- Game-objects ---
 import {

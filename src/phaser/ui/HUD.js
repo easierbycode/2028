@@ -1,5 +1,5 @@
-import { GAME_DIMENSIONS } from "../../constants.js";
-import { getDisplayedHighScore, getWorldBestLabel } from "../../highScoreUi.js";
+import { GAME_DIMENSIONS } from "../../shared/constants.js";
+import { getDisplayedHighScore, getWorldBestLabel } from "../../shared/highScoreUi.js";
 import { SmallNumberDisplay } from "./SmallNumberDisplay.js";
 import { BigNumberDisplay } from "./BigNumberDisplay.js";
 import { ComboNumberDisplay } from "./ComboNumberDisplay.js";
