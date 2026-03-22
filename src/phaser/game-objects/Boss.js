@@ -1,0 +1,932 @@
+// src/phaser/game-objects/Boss.js
+// Boss creation, projectile shooting helpers, death, danger check
+// Extracted from GameScene: bossAdd, bossShoot, bossShoot*, bossDie, checkBossDanger, bossShootStart
+
+import { GAME_DIMENSIONS } from "../../constants.js";
+import { gameState } from "../../gameState.js";
+import { triggerHaptic } from "../../haptics.js";
+import { createShadow, updateShadowPosition } from "./Shadow.js";
+import { showBossExplosion, showHitImpact } from "../effects/Explosions.js";
+import {
+    bossPatternBison,
+    bossPatternBarlog,
+    bossPatternSagat,
+    bossPatternVega,
+    bossPatternFang,
+    bossPatternGoki,
+} from "../bosses/index.js";
+
+var GW = GAME_DIMENSIONS.WIDTH;
+var GH = GAME_DIMENSIONS.HEIGHT;
+var GCX = GAME_DIMENSIONS.CENTER_X;
+var GCY = GAME_DIMENSIONS.CENTER_Y;
+
+function clamp(v, lo, hi) {
+    return v < lo ? lo : v > hi ? hi : v;
+}
+
+// Per-boss danger balloon local offsets (PIXI top-left relative coords).
+// PIXI uses anchor(0,0) and addChild so balloon position is relative to
+// the unit container's top-left corner.  pivot.y = height makes the
+// balloon's bottom edge sit at the offset point.
+var BOSS_BALLOON_OFFSETS = [
+    { x: 0, y: 20 },   // bison
+    { x: 30, y: 20 },  // barlog
+    { x: 0, y: 0 },    // sagat (no offset set in original)
+    { x: 0, y: 15 },   // vega
+    { x: 70, y: 40 },  // fang
+];
+var GOKI_BALLOON_OFFSET = { x: 5, y: 20 };
+
+/**
+ * Spawns the boss sprite and begins its entry tween.
+ *
+ * @param {Phaser.Scene} scene
+ */
+export function bossAdd(scene) {
+    if (scene.bossActive) return;
+    scene.bossActive = true;
+    scene.bossReached = true;
+    scene.bossEntering = true;
+    scene.enemyWaveFlg = false;
+
+    var stageId = gameState.stageId || 0;
+    scene.bossStageId = stageId;
+    scene.gokiFlg = false;
+    scene.bossIsGoki = false;
+
+    // spBoss: at stageId 3 with 0 continues, BossGoki replaces BossVega
+    var isGokiStage = stageId === 3 && Number(gameState.continueCnt || 0) === 0;
+    if (isGokiStage) {
+        scene.gokiFlg = true;
+    }
+
+    var bossData = scene.recipe.bossData ? scene.recipe.bossData["boss" + String(stageId)] : null;
+    if (!bossData) {
+        scene.stageClear();
+        return;
+    }
+
+    scene.bossHp = bossData.hp || 100;
+    scene.bossMaxHp = scene.bossHp;
+    scene.bossScore = bossData.score || 5000;
+    scene.bossInterval = bossData.interval || 60;
+    scene.bossIntervalCnt = 0;
+    scene.bossIntervalCounter = 0;
+    scene.bossName = bossData.name || "boss";
+    scene.bossProjCnt = 0;
+
+    scene.bossProjDataA = bossData.bulletDataA || bossData.projectileDataA || null;
+    scene.bossProjDataB = bossData.bulletDataB || bossData.projectileDataB || null;
+    scene.bossProjDataC = bossData.bulletDataC || bossData.projectileDataC || null;
+    scene.bossProjData = bossData.bulletData || bossData.projectileData || scene.bossProjDataA;
+    triggerHaptic("bossEnter");
+
+    var bossFrames = (bossData.anim && bossData.anim.idle) || bossData.texture || [];
+    var bossFrame = bossFrames[0] || "bison_idle0.gif";
+
+    scene.bossSprite = scene.add.sprite(GCX, -50, "game_asset", bossFrame);
+    scene.bossSprite.setOrigin(0.5);
+    scene.bossSprite.setDepth(45);
+    scene.bossSprite.setData("type", "boss");
+    scene.bossSprite.setData("hp", scene.bossHp);
+    scene.bossSprite.setData("frames", bossFrames);
+    scene.bossSprite.setData("animIdx", 0);
+    scene.bossSprite.setData("animTimer", 0);
+    scene.bossSprite.setData("projData", scene.bossProjData);
+    scene.bossSprite.setData("score", scene.bossScore);
+    scene.bossSprite.setData("spgage", bossData.spgage || 5);
+
+    // Boss shadow
+    var bossShadowReverse = bossData.shadowReverse !== false;
+    var bossShadowOffsetY = bossData.shadowOffsetY || 10;
+    scene.bossShadow = createShadow(scene, scene.bossSprite, bossFrame, bossShadowReverse, bossShadowOffsetY);
+    scene.bossSprite.setData("shadow", scene.bossShadow);
+
+    // Store vega animation sets for pattern use (stageId 3)
+    if (stageId === 3 && bossData.anim) {
+        scene.vegaAnimIdle = bossData.anim.idle || [];
+        scene.vegaAnimShoot = bossData.anim.shoot || [];
+        scene.vegaAnimAttack = bossData.anim.attack || [];
+    }
+
+    // Store fang animation sets for pattern use (stageId 4)
+    if (stageId === 4 && bossData.anim) {
+        scene.fangAnimIdle = bossData.anim.idle || [];
+        scene.fangAnimWait = bossData.anim.wait || [];
+        scene.fangAnimCharge = bossData.anim.charge || [];
+        scene.fangAnimShoot = bossData.anim.shoot || [];
+    }
+
+    scene.enemies.push(scene.bossSprite);
+
+    var bossNames = ["bison", "barlog", "sagat", "vega", "fang"];
+    var voiceKey = "boss_" + (bossNames[stageId] || "bison") + "_voice_add";
+    scene.playSound(voiceKey, 0.7);
+
+    // PIXI: bosses rest at unit.y = GAME_HEIGHT/4 (top-left origin), BossFang at y=48.
+    // Phaser uses center origin (0.5), so add half sprite height to match PIXI visual pos.
+    var pixiRestY = (stageId === 4) ? 48 : GH / 4;
+    var entryY = pixiRestY + scene.bossSprite.height / 2;
+    scene.bossBaseY = entryY;
+    scene.tweens.add({
+        targets: scene.bossSprite,
+        y: entryY,
+        duration: 2000,
+        ease: "Quint.easeOut",
+        onComplete: function () {
+            scene.bossEntering = false;
+            scene.bossTimerCountDown = 99;
+            scene.bossTimerFrameCnt = 0;
+
+            if (scene.gokiFlg) {
+                // spBoss: trigger BossGoki sequence instead of BossVega shooting
+                scene.time.delayedCall(1500, function () {
+                    _startGokiSequence(scene);
+                });
+            } else {
+                scene.time.delayedCall(1500, function () {
+                    bossShootStart(scene);
+                });
+            }
+
+            scene.time.delayedCall(3000, function () {
+                scene.bossTimerStartFlg = true;
+                scene.bossTimerLabel.setVisible(true);
+                scene.bossTimerNum.container.setVisible(true);
+                scene.spBtn.setAlpha(1);
+            });
+        },
+    });
+
+    scene.stageEndBg.setVisible(true);
+    scene.bossAppearBgFlg = true;
+    scene.bossAppearBgScroll = 0;
+}
+
+// -----------------------------------------------------------------------
+// spBoss (BossGoki) transition sequence
+// Matches PIXI: BossVega enters, then BossGoki appears and performs
+// shungokusatsu on BossVega before becoming the main boss.
+// -----------------------------------------------------------------------
+
+function _startGokiSequence(scene) {
+    scene.theWorldFlg = true;
+    scene.spBtn.setAlpha(0);
+
+    // Clear player bullets
+    for (var pb = scene.playerBullets.length - 1; pb >= 0; pb--) {
+        if (scene.playerBullets[pb] && scene.playerBullets[pb].active) {
+            scene.playerBullets[pb].destroy();
+        }
+    }
+    scene.playerBullets = [];
+
+    var preBoss = scene.bossSprite;
+    var gokiData = scene.recipe.bossData ? scene.recipe.bossData.bossExtra : null;
+    if (!gokiData) {
+        scene.gokiFlg = false;
+        bossShootStart(scene);
+        return;
+    }
+
+    // Create BossGoki sprite offscreen right
+    var gokiFrames = (gokiData.anim && gokiData.anim.idle) || [];
+    var gokiFrame = gokiFrames[0] || "goki_idle0.gif";
+    var gokiSprite = scene.add.sprite(GW + 50, GH / 4, "game_asset", gokiFrame);
+    gokiSprite.setOrigin(0.5);
+    gokiSprite.setDepth(45);
+
+    scene.playSound("boss_goki_voice_add", 0.7);
+
+    // BossGoki slides in toward center
+    scene.tweens.add({
+        targets: gokiSprite,
+        x: GCX + 30,
+        duration: 1000,
+        onComplete: function () {
+            // Shungokusatsu sequence: blackout + hit effects
+            scene.playSound("boss_goki_voice_syungokusatu0", 0.9);
+
+            var blackout = scene.add.rectangle(GCX, GCY, GW, GH, 0x000000);
+            blackout.setDepth(200);
+
+            var flash = scene.add.rectangle(GCX, GCY, GW, GH, 0xffffff);
+            flash.setDepth(201);
+            flash.setAlpha(0);
+
+            // Hit effects — PIXI spawns 10 hit impact sprites at random
+            // positions on the target boss (preBoss) with 50ms intervals
+            var bossX = preBoss.x;
+            var bossY = preBoss.y;
+            var bossW = preBoss.width || 80;
+            var bossH = (preBoss.height || 80) / 2;
+            var hitCount = 0;
+            scene.time.addEvent({
+                delay: 50, repeat: 9,
+                callback: function () {
+                    scene.playSound("se_damage", 0.3);
+                    // Show hit impact at random position on target unit
+                    var hx = bossX + Math.random() * bossW - bossW / 2;
+                    var hy = bossY + Math.random() * bossH - bossH / 2;
+                    showHitImpact(scene, hx, hy, false);
+                    flash.setAlpha(0.2);
+                    scene.time.delayedCall(60, function () {
+                        flash.setAlpha(0);
+                    });
+                    hitCount++;
+                },
+            });
+
+            // After shungokusatsu, reveal BossGoki as the boss
+            scene.time.delayedCall(1200, function () {
+                scene.playSound("boss_goki_voice_syungokusatu1", 0.9);
+
+                // Fade out blackout
+                scene.tweens.add({
+                    targets: blackout,
+                    alpha: 0,
+                    duration: 300,
+                    onComplete: function () {
+                        blackout.destroy();
+                        flash.destroy();
+                    },
+                });
+
+                // Remove preBoss (BossVega)
+                if (scene.bossShadow && scene.bossShadow.active) {
+                    scene.bossShadow.destroy();
+                }
+                var idx = scene.enemies.indexOf(preBoss);
+                if (idx >= 0) scene.enemies.splice(idx, 1);
+                if (preBoss.dangerBalloon && preBoss.dangerBalloon.active) {
+                    preBoss.dangerBalloon.destroy();
+                }
+                preBoss.destroy();
+
+                // Make BossGoki the active boss
+                scene.bossSprite = gokiSprite;
+                scene.bossSprite.setData("type", "boss");
+                scene.bossIsGoki = true;
+                scene.bossStageId = 3;
+                scene.gokiFlg = false;
+
+                scene.bossHp = gokiData.hp || 350;
+                scene.bossMaxHp = scene.bossHp;
+                scene.bossScore = gokiData.score || 8000;
+                scene.bossInterval = gokiData.interval || 200;
+                scene.bossName = gokiData.name || "goki";
+
+                scene.bossProjDataA = gokiData.bulletDataA || null;
+                scene.bossProjDataB = gokiData.bulletDataB || null;
+                scene.bossProjDataC = null;
+                scene.bossProjData = scene.bossProjDataA;
+
+                scene.bossSprite.setData("hp", scene.bossHp);
+                scene.bossSprite.setData("frames", gokiFrames);
+                scene.bossSprite.setData("animIdx", 0);
+                scene.bossSprite.setData("animTimer", 0);
+                scene.bossSprite.setData("projData", scene.bossProjData);
+                scene.bossSprite.setData("score", scene.bossScore);
+                scene.bossSprite.setData("spgage", gokiData.spgage || 30);
+
+                // Store goki animation sets for pattern use
+                scene.gokiAnimIdle = (gokiData.anim && gokiData.anim.idle) || [];
+                scene.gokiAnimSyngoku = (gokiData.anim && gokiData.anim.syngoku) || [];
+                scene.gokiAnimShootA = (gokiData.anim && gokiData.anim.shootA) || [];
+                scene.gokiAnimShootB = (gokiData.anim && gokiData.anim.shootB) || [];
+                scene.gokiAnimSyngokuFinish = (gokiData.anim && gokiData.anim.syngokuFinish) || [];
+                scene.gokiAnimSyngokuFinishTen = (gokiData.anim && gokiData.anim.syngokuFinishTen) || [];
+
+                // Play syngoku anim on initial appearance (matches PIXI castAdded)
+                if (scene.gokiAnimSyngoku.length > 0) {
+                    scene.bossSprite.setData("frames", scene.gokiAnimSyngoku);
+                    scene.bossSprite.setData("animIdx", 0);
+                    scene.bossSprite.setData("animTimer", 0);
+                    scene.bossSprite.setFrame(scene.gokiAnimSyngoku[0]);
+                }
+
+                // BossGoki shadow
+                var gokiShadowReverse = gokiData.shadowReverse !== false;
+                var gokiShadowOffsetY = gokiData.shadowOffsetY || 10;
+                scene.bossShadow = createShadow(scene, gokiSprite, gokiFrame, gokiShadowReverse, gokiShadowOffsetY);
+                scene.bossSprite.setData("shadow", scene.bossShadow);
+
+                scene.enemies.push(scene.bossSprite);
+                scene.bossDangerShown = false;
+
+                // Boss HP bar kept hidden
+                scene.bossHpBarBg.setVisible(false);
+                scene.bossHpBarFg.setVisible(false);
+
+                // Change BGM to Goki BGM
+                try {
+                    var oldBgm = scene.sound.get(scene.stageBgmName);
+                    if (oldBgm && oldBgm.isPlaying) oldBgm.stop();
+                } catch (e) {}
+                scene.stageBgmName = "boss_goki_bgm";
+                scene.playBgm("boss_goki_bgm", 0.4);
+
+                // BossGoki moves to fight position
+                // PIXI: goki rests at GAME_HEIGHT/4 (top-left), adjust for Phaser center origin
+                var gokiRestY = GH / 4 + gokiSprite.height / 2;
+                scene.bossBaseY = gokiRestY;
+                scene.tweens.add({
+                    targets: gokiSprite,
+                    x: GCX,
+                    y: gokiRestY,
+                    duration: 1000,
+                    onComplete: function () {
+                        scene.theWorldFlg = false;
+                        scene.spBtn.setAlpha(1);
+                        bossShootStart(scene);
+                    },
+                });
+            });
+        },
+    });
+}
+
+// -----------------------------------------------------------------------
+// Boss attack pattern dispatcher
+// -----------------------------------------------------------------------
+
+export function _bossAlive(scene) {
+    return scene.bossSprite && scene.bossSprite.active && !scene.stageCleared && !scene.playerDead;
+}
+
+export function bossShootStart(scene) {
+    if (!_bossAlive(scene) || scene.theWorldFlg) {
+        if (scene.theWorldFlg && _bossAlive(scene)) {
+            scene.time.delayedCall(500, function () { bossShootStart(scene); });
+        }
+        return;
+    }
+    var seed = Math.random();
+    if (scene.bossIsGoki) {
+        bossPatternGoki(scene, seed);
+        return;
+    }
+    switch (scene.bossStageId) {
+    case 0: bossPatternBison(scene, seed); break;
+    case 1: bossPatternBarlog(scene, seed); break;
+    case 2: bossPatternSagat(scene, seed); break;
+    case 3: bossPatternVega(scene, seed); break;
+    case 4: bossPatternFang(scene, seed); break;
+    default: bossPatternBison(scene, seed); break;
+    }
+}
+
+// -----------------------------------------------------------------------
+// Projectile helpers (called from boss pattern modules)
+// -----------------------------------------------------------------------
+
+export function bossShootStraight(scene, projData) {
+    if (!projData || !scene.bossSprite) return;
+
+    var frames = projData.texture || [];
+    var frameKey = frames[0] || "normalProjectile0.gif";
+    var speed = projData.speed || 1;
+
+    var bullet = scene.add.sprite(scene.bossSprite.x, scene.bossSprite.y + 20, "game_asset", frameKey);
+    bullet.setOrigin(0.5);
+    bullet.setDepth(47);
+    bullet.setData("speed", speed);
+    bullet.setData("damage", projData.damage || 1);
+    bullet.setData("hp", projData.hp || 1);
+    bullet.setData("score", projData.score || 0);
+    bullet.setData("spgage", projData.spgage || 0);
+    bullet.setData("rotX", 0);
+    bullet.setData("rotY", 1);
+
+    if (frames.length > 1) {
+        bullet.setData("frames", frames);
+        bullet.setData("animIdx", 0);
+        bullet.setData("animTimer", 0);
+    }
+
+    scene.enemyBullets.push(bullet);
+}
+
+export function bossShootAimed(scene, projData) {
+    if (!projData || !scene.bossSprite) return;
+
+    var frames = projData.texture || [];
+    var frameKey = frames[0] || "normalProjectile0.gif";
+    var speed = projData.speed || 1;
+
+    var bullet = scene.add.sprite(scene.bossSprite.x, scene.bossSprite.y + 20, "game_asset", frameKey);
+    bullet.setOrigin(0.5);
+    bullet.setDepth(47);
+    bullet.setData("speed", speed);
+    bullet.setData("damage", projData.damage || 1);
+    bullet.setData("hp", projData.hp || 1);
+    bullet.setData("score", projData.score || 0);
+    bullet.setData("spgage", projData.spgage || 0);
+
+    var dx = scene.playerSprite.x - scene.bossSprite.x;
+    var dy = scene.playerSprite.y - scene.bossSprite.y;
+    var dist = Math.sqrt(dx * dx + dy * dy) || 1;
+
+    bullet.setData("rotX", dx / dist);
+    bullet.setData("rotY", dy / dist);
+
+    if (frames.length > 1) {
+        bullet.setData("frames", frames);
+        bullet.setData("animIdx", 0);
+        bullet.setData("animTimer", 0);
+    }
+
+    scene.enemyBullets.push(bullet);
+}
+
+export function bossShootBeam(scene, projData, degree) {
+    if (!projData || !scene.bossSprite) return;
+
+    var frames = projData.texture || [];
+    var frameKey = frames[0] || "normalProjectile0.gif";
+    var speed = projData.speed || 1;
+    var rad = degree * Math.PI / 180;
+
+    // PIXI fires 2 beams per call at slightly offset x positions
+    for (var i = 0; i < 2; i++) {
+        var offsetX = i === 0 ? -10 : 10;
+        var bullet = scene.add.sprite(scene.bossSprite.x + offsetX, scene.bossSprite.y + 20, "game_asset", frameKey);
+        bullet.setOrigin(0.5);
+        bullet.setDepth(47);
+        bullet.setRotation(rad);
+        bullet.setData("speed", speed);
+        bullet.setData("damage", projData.damage || 1);
+        bullet.setData("hp", projData.hp || 1);
+        bullet.setData("score", projData.score || 0);
+        bullet.setData("spgage", projData.spgage || 0);
+        bullet.setData("rotX", Math.cos(rad));
+        bullet.setData("rotY", Math.sin(rad));
+
+        if (frames.length > 1) {
+            bullet.setData("frames", frames);
+            bullet.setData("animIdx", 0);
+            bullet.setData("animTimer", 0);
+        }
+
+        scene.enemyBullets.push(bullet);
+    }
+}
+
+export function bossShootSpread(scene, projData, count, angleDeg) {
+    if (!projData || !scene.bossSprite) return;
+
+    var frames = projData.texture || [];
+    var frameKey = frames[0] || "normalProjectile0.gif";
+    var speed = projData.speed || 1;
+
+    var dx = scene.playerSprite.x - scene.bossSprite.x;
+    var dy = scene.playerSprite.y - scene.bossSprite.y;
+    var baseAngle = Math.atan2(dy, dx);
+    var spreadRad = angleDeg * Math.PI / 180;
+    var half = Math.floor(count / 2);
+
+    for (var i = 0; i < count; i++) {
+        var offset = (i - half) * (spreadRad / Math.max(count - 1, 1));
+        var angle = baseAngle + offset;
+
+        var bullet = scene.add.sprite(scene.bossSprite.x, scene.bossSprite.y + 20, "game_asset", frameKey);
+        bullet.setOrigin(0.5);
+        bullet.setDepth(47);
+        bullet.setData("speed", speed);
+        bullet.setData("damage", projData.damage || 1);
+        bullet.setData("hp", projData.hp || 1);
+        bullet.setData("score", projData.score || 0);
+        bullet.setData("spgage", projData.spgage || 0);
+        bullet.setData("rotX", Math.cos(angle));
+        bullet.setData("rotY", Math.sin(angle));
+
+        scene.enemyBullets.push(bullet);
+    }
+}
+
+export function bossShootRadial(scene, projData, count) {
+    if (!projData || !scene.bossSprite) return;
+
+    var frames = projData.texture || [];
+    var frameKey = frames[0] || "normalProjectile0.gif";
+    var speed = (projData.speed || 1) * 0.8;
+
+    for (var i = 0; i < count; i++) {
+        var angle = (i / count) * Math.PI * 2;
+        var bullet = scene.add.sprite(scene.bossSprite.x, scene.bossSprite.y, "game_asset", frameKey);
+        bullet.setOrigin(0.5);
+        bullet.setDepth(47);
+        bullet.setData("speed", speed);
+        bullet.setData("damage", projData.damage || 1);
+        bullet.setData("hp", projData.hp || 1);
+        bullet.setData("score", projData.score || 0);
+        bullet.setData("spgage", projData.spgage || 0);
+        bullet.setData("rotX", Math.cos(angle));
+        bullet.setData("rotY", Math.sin(angle));
+
+        scene.enemyBullets.push(bullet);
+    }
+}
+
+// -----------------------------------------------------------------------
+// Boss danger balloon
+// -----------------------------------------------------------------------
+
+export function checkBossDanger(scene) {
+    if (scene.bossDangerShown || !scene.bossSprite || !scene.bossSprite.active) return;
+    var spDamage = scene.recipe.playerData.spDamage || 50;
+    if (scene.bossHp <= spDamage) {
+        scene.bossDangerShown = true;
+        triggerHaptic("warning");
+
+        // PIXI: balloon is addChild of unit container, so it tracks the boss
+        // automatically.  pivot.y = height makes the bottom edge sit at (x, y).
+        // Each boss class sets a unique (x, y) relative to the unit top-left.
+        var stageId = scene.bossStageId || 0;
+        var offsets = scene.bossIsGoki ? GOKI_BALLOON_OFFSET : (BOSS_BALLOON_OFFSETS[stageId] || BOSS_BALLOON_OFFSETS[0]);
+
+        // Convert PIXI top-left-relative offsets to Phaser center-relative.
+        // PIXI: balloon at (offsets.x, offsets.y) from unit top-left
+        // Phaser: bossSprite.x/y is center, so top-left = center - size/2
+        var relX = offsets.x - scene.bossSprite.width / 2;
+        var relY = offsets.y - scene.bossSprite.height / 2;
+
+        var dangerBalloon = scene.add.sprite(
+            scene.bossSprite.x + relX,
+            scene.bossSprite.y + relY,
+            "game_asset", "boss_dengerous0.gif"
+        );
+        // origin(0,1) matches PIXI pivot.y = height: bottom-left anchor
+        dangerBalloon.setOrigin(0, 1);
+        dangerBalloon.setDepth(46);
+        dangerBalloon.setScale(0);
+        dangerBalloon.setData("relX", relX);
+        dangerBalloon.setData("relY", relY);
+        scene.bossSprite.dangerBalloon = dangerBalloon;
+
+        scene.tweens.add({
+            targets: dangerBalloon,
+            scaleX: 1,
+            scaleY: 1,
+            duration: 1000,
+            ease: "Back.easeOut",
+        });
+
+        var dangerFrame = 0;
+        scene.time.addEvent({
+            delay: 250,
+            loop: true,
+            callback: function () {
+                if (!dangerBalloon || !dangerBalloon.active) return;
+                dangerFrame = (dangerFrame + 1) % 3;
+                dangerBalloon.setFrame("boss_dengerous" + dangerFrame + ".gif");
+            },
+        });
+    }
+}
+
+// -----------------------------------------------------------------------
+// Per-frame boss visual sync (shadow + danger balloon)
+// -----------------------------------------------------------------------
+
+/**
+ * Syncs boss shadow position and danger balloon position each frame.
+ * Called from fixedUpdate for the boss sprite (updateEnemy is only for
+ * regular enemies, so the boss needs its own visual sync).
+ *
+ * @param {Phaser.Scene} scene
+ */
+export function syncBossVisuals(scene) {
+    if (!scene.bossSprite || !scene.bossSprite.active) return;
+
+    // Boss shadow position sync
+    if (scene.bossShadow && scene.bossShadow.active) {
+        updateShadowPosition(scene.bossShadow, scene.bossSprite);
+    }
+
+    // Danger balloon position sync
+    var balloon = scene.bossSprite.dangerBalloon;
+    if (balloon && balloon.active) {
+        balloon.x = scene.bossSprite.x + (balloon.getData("relX") || 0);
+        balloon.y = scene.bossSprite.y + (balloon.getData("relY") || 0);
+    }
+}
+
+// -----------------------------------------------------------------------
+// Boss death sequence
+// -----------------------------------------------------------------------
+
+export function bossDie(scene, boss) {
+    if (scene.stageCleared) return;
+
+    // PIXI: when akebonoFlg (SP finish), boss unit + shadow + dengerousBalloon
+    // all stay visible during the KO finish sequence.
+    var isAkebono = !!scene.spFired;
+
+    // Destroy boss shadow only when NOT akebono (PIXI keeps shadow during KO finish)
+    if (!isAkebono && scene.bossShadow && scene.bossShadow.active) {
+        scene.bossShadow.destroy();
+        scene.bossShadow = null;
+    }
+
+    scene.bossTimerStartFlg = false;
+    scene.bossTimerLabel.setVisible(false);
+    scene.bossTimerNum.container.setVisible(false);
+    scene.theWorldFlg = true;
+
+    scene.comboCount++;
+    if (scene.comboCount > scene.maxCombo) {
+        scene.maxCombo = scene.comboCount;
+    }
+    var ratio = Math.max(1, Math.ceil(scene.comboCount / 10));
+    scene.scoreCount += scene.bossScore * ratio;
+
+    scene.showScorePopup(boss.x, boss.y, scene.bossScore, ratio);
+
+    // PIXI bossRemove: destroy all player bullets and clear list
+    for (var pb = scene.playerBullets.length - 1; pb >= 0; pb--) {
+        if (scene.playerBullets[pb] && scene.playerBullets[pb].active) {
+            scene.playerBullets[pb].destroy();
+        }
+    }
+    scene.playerBullets = [];
+
+    // PIXI boss.dead(): 5 staggered explosions at random positions within boss hitArea
+    // Uses slower 18fps animation matching PIXI animationSpeed=0.15
+    var startX = boss.x;
+    var startY = boss.y;
+    var bw = boss.width || 80;
+    var bh = boss.height || 80;
+    for (var ei = 0; ei < 5; ei++) {
+        (function (i) {
+            scene.time.delayedCall(250 * i, function () {
+                var ex = startX + Math.random() * bw - bw / 2;
+                var ey = startY + Math.random() * bh - bh / 2;
+                showBossExplosion(scene, ex, ey);
+                scene.playSound("se_explosion", 0.35);
+            });
+        })(ei);
+    }
+
+    // PIXI boss.dead(): shake animation (two cycles of position jitter)
+    var shakeOffsets = [
+        { x: 4, y: -2 }, { x: -3, y: 1 }, { x: 2, y: -1 },
+        { x: -2, y: 1 }, { x: 1, y: 1 }, { x: 0, y: 0 },
+        { x: 4, y: -2 }, { x: -3, y: 1 }, { x: 2, y: -1 },
+        { x: -2, y: 1 }, { x: 1, y: 1 }, { x: 0, y: 0 },
+    ];
+    var shakeDelays = [0, 80, 70, 50, 50, 40, 0, 80, 70, 50, 50, 40];
+    var cumDelay = 0;
+    for (var si = 0; si < shakeOffsets.length; si++) {
+        cumDelay += shakeDelays[si];
+        (function (off, delay) {
+            scene.time.delayedCall(delay, function () {
+                if (!boss || !boss.active) return;
+                boss.x = startX + off.x;
+                boss.y = startY + off.y;
+            });
+        })(shakeOffsets[si], cumDelay);
+    }
+    // PIXI boss.dead(): when akebonoFlg (SP finish), boss stays visible;
+    // otherwise fade out unit after shake (1s fade with 0.5s delay)
+    if (!isAkebono) {
+        scene.tweens.add({
+            targets: boss,
+            alpha: 0,
+            duration: 1000,
+            delay: cumDelay + 500,
+            onComplete: function () {
+                if (boss && boss.active) boss.destroy();
+            },
+        });
+    }
+
+    var bossNames = ["bison", "barlog", "sagat", "vega", "fang"];
+    var stageId = gameState.stageId || 0;
+    var bossVoiceName = scene.bossIsGoki ? "goki" : (bossNames[stageId] || "bison");
+    var voiceKey = "boss_" + bossVoiceName + "_voice_ko";
+    triggerHaptic("bossDefeat");
+    scene.playSound(voiceKey, 0.9);
+    scene.playSound("se_finish_akebono", 0.9);
+
+    if (isAkebono) {
+        scene.showAkebonoFinish();
+    }
+
+    // PIXI: when akebonoFlg, dengerousBalloon stays visible and keeps
+    // playing its animation during the KO finish sequence.
+    // Only destroy if NOT akebono finish.
+    if (!isAkebono && boss.dangerBalloon && boss.dangerBalloon.active) {
+        boss.dangerBalloon.destroy();
+    }
+
+    var idx = scene.enemies.indexOf(boss);
+    if (idx >= 0) scene.enemies.splice(idx, 1);
+
+    scene.bossSprite = null;
+    scene.bossActive = false;
+    scene.bossDangerShown = false;
+    scene.bossHpBarBg.setVisible(false);
+    scene.bossHpBarFg.setVisible(false);
+
+    for (var eb = scene.enemyBullets.length - 1; eb >= 0; eb--) {
+        if (scene.enemyBullets[eb] && scene.enemyBullets[eb].active) {
+            scene.enemyBullets[eb].destroy();
+        }
+    }
+    scene.enemyBullets = [];
+
+    scene.time.delayedCall(2500, function () {
+        scene.stageClear();
+    });
+}
+
+// -----------------------------------------------------------------------
+// Goki-player collision: shungokusatsu attack on the player
+// Matches PIXI: when enemy.name === "goki" collides with player,
+// performs the full shungokusatsu sequence with isFinalTen=true
+// (blackout, 10 hit impacts, akebonoTen "天" kanji, then kills player)
+// -----------------------------------------------------------------------
+
+export function gokiPlayerAttack(scene) {
+    scene.theWorldFlg = true;
+    scene.spBtn.setAlpha(0);
+
+    // Clear player bullets
+    for (var pb = scene.playerBullets.length - 1; pb >= 0; pb--) {
+        if (scene.playerBullets[pb] && scene.playerBullets[pb].active) {
+            scene.playerBullets[pb].destroy();
+        }
+    }
+    scene.playerBullets = [];
+
+    // Hide player
+    scene.playerSprite.setAlpha(0);
+
+    // Switch Goki to syngoku anim
+    var boss = scene.bossSprite;
+    if (boss && boss.active && scene.gokiAnimSyngoku && scene.gokiAnimSyngoku.length > 0) {
+        boss.setData("frames", scene.gokiAnimSyngoku);
+        boss.setData("animIdx", 0);
+        boss.setData("animTimer", 0);
+        try { boss.setFrame(scene.gokiAnimSyngoku[0]); } catch (e) {}
+        var shadow = boss.getData("shadow");
+        if (shadow && shadow.active) {
+            try { shadow.setFrame(scene.gokiAnimSyngoku[0]); } catch (e) {}
+        }
+    }
+
+    scene.playSound("boss_goki_voice_syungokusatu0", 0.9);
+
+    // Blackout
+    var blackout = scene.add.rectangle(GCX, GCY, GW, GH, 0x000000);
+    blackout.setDepth(200);
+
+    var flash = scene.add.rectangle(GCX, GCY, GW, GH, 0xffffff);
+    flash.setDepth(201);
+    flash.setAlpha(0);
+
+    // 10 hit impacts on player position
+    var playerX = scene.playerSprite.x;
+    var playerY = scene.playerSprite.y;
+    scene.time.addEvent({
+        delay: 50, repeat: 9,
+        callback: function () {
+            scene.playSound("se_damage", 0.3);
+            var hx = playerX + Math.random() * 32 - 16;
+            var hy = playerY + Math.random() * 16 - 8;
+            showHitImpact(scene, hx, hy, false);
+            flash.setAlpha(0.2);
+            scene.time.delayedCall(60, function () {
+                flash.setAlpha(0);
+            });
+        },
+    });
+
+    // After shungokusatsu hits, switch to syngokuFinishTen anim
+    scene.time.delayedCall(700, function () {
+        if (boss && boss.active && scene.gokiAnimSyngokuFinishTen && scene.gokiAnimSyngokuFinishTen.length > 0) {
+            boss.setData("frames", scene.gokiAnimSyngokuFinishTen);
+            boss.setData("animIdx", 0);
+            boss.setData("animTimer", 0);
+            try { boss.setFrame(scene.gokiAnimSyngokuFinishTen[0]); } catch (e) {}
+            var shadow2 = boss.getData("shadow");
+            if (shadow2 && shadow2.active) {
+                try { shadow2.setFrame(scene.gokiAnimSyngokuFinishTen[0]); } catch (e) {}
+            }
+        }
+    });
+
+    // 1.8s: player reappears
+    scene.time.delayedCall(1800, function () {
+        scene.playerSprite.setAlpha(1);
+    });
+
+    // 1.9s: akebonoGoki finish — akebono bg + "天" kanji effect
+    scene.time.delayedCall(1900, function () {
+        scene.playSound("boss_goki_voice_syungokusatu1", 0.9);
+
+        // Fade out blackout
+        scene.tweens.add({
+            targets: blackout,
+            alpha: 0,
+            duration: 300,
+            onComplete: function () {
+                blackout.destroy();
+                flash.destroy();
+            },
+        });
+
+        // Akebono BG (flashing background)
+        if (!scene.anims.exists("akebono_bg_anim")) {
+            scene.anims.create({
+                key: "akebono_bg_anim",
+                frames: scene.anims.generateFrameNames("game_ui", {
+                    prefix: "akebonoBg",
+                    start: 0,
+                    end: 2,
+                    suffix: ".gif",
+                }),
+                frameRate: 17,
+                repeat: -1,
+            });
+        }
+        var akebonoBg = scene.add.sprite(0, 0, "game_ui", "akebonoBg0.gif");
+        akebonoBg.setOrigin(0, 0);
+        akebonoBg.setDepth(5);
+        akebonoBg.play("akebono_bg_anim");
+
+        // "天" kanji effect (matches PIXI StageBackground.akebonoGokifinish)
+        var tenX = 27;
+        var tenY = 113;
+        // Get frame dimensions to calculate center position
+        var tenSprite = scene.add.sprite(tenX, tenY, "game_ui", "akebonoTen.gif");
+        var tenW = tenSprite.width;
+        var tenH = tenSprite.height;
+        tenSprite.destroy();
+
+        var akebonoTen = scene.add.sprite(tenX + tenW / 2, tenY + tenH / 2, "game_ui", "akebonoTen.gif");
+        akebonoTen.setOrigin(0.5);
+        akebonoTen.setDepth(6);
+        akebonoTen.setScale(1.2);
+
+        var akebonoTenShock = scene.add.sprite(tenX + tenW / 2, tenY + tenH / 2, "game_ui", "akebonoTen.gif");
+        akebonoTenShock.setOrigin(0.5);
+        akebonoTenShock.setDepth(6);
+        akebonoTenShock.setAlpha(0);
+
+        // PIXI timeline: scale ten 1.2→1, then shock flash, then fade both
+        scene.tweens.add({
+            targets: akebonoTen,
+            scaleX: 1,
+            scaleY: 1,
+            duration: 300,
+            ease: "Quint.easeIn",
+            onComplete: function () {
+                akebonoTenShock.setAlpha(1);
+                scene.tweens.add({
+                    targets: akebonoTenShock,
+                    alpha: 0,
+                    duration: 600,
+                    ease: "Quint.easeOut",
+                });
+                scene.tweens.add({
+                    targets: akebonoTenShock,
+                    scaleX: 1.5,
+                    scaleY: 1.5,
+                    duration: 400,
+                    ease: "Quint.easeOut",
+                });
+                scene.tweens.add({
+                    targets: akebonoTen,
+                    alpha: 0,
+                    duration: 300,
+                    delay: 200,
+                    ease: "Quint.easeOut",
+                });
+            },
+        });
+    });
+
+    // 2.7s: kill the player (100 damage = instant death)
+    scene.time.delayedCall(2700, function () {
+        scene.playerDamage(100);
+    });
+
+    // 3.0s: KO display (akebonofinish)
+    scene.time.delayedCall(3000, function () {
+        scene.showAkebonoFinish();
+        // Return boss to idle anim
+        if (boss && boss.active && scene.gokiAnimIdle && scene.gokiAnimIdle.length > 0) {
+            boss.setData("frames", scene.gokiAnimIdle);
+            boss.setData("animIdx", 0);
+            boss.setData("animTimer", 0);
+            try { boss.setFrame(scene.gokiAnimIdle[0]); } catch (e) {}
+            var shadow3 = boss.getData("shadow");
+            if (shadow3 && shadow3.active) {
+                try { shadow3.setFrame(scene.gokiAnimIdle[0]); } catch (e) {}
+            }
+        }
+    });
+}

@@ -1,0 +1,339 @@
+name: Build & Deploy (GitHub Pages + Cordova + Electron)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  cordova:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Cordova CLI
+        run: npm i -g cordova
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android packages
+        run: |
+          sdkmanager --install "platform-tools" "platforms;android-35" "build-tools;35.0.0" || true
+          yes | sdkmanager --licenses || true
+
+      - name: Create Cordova project
+        run: |
+          if [ ! -d cordova ]; then
+            cordova create cordova com.easierbycode.game2028 "2028.ai"
+            cd cordova
+            cordova platform add android@14.0.1
+          fi
+
+      - name: Copy project config.xml and resources into Cordova project
+        run: |
+          cp config.xml cordova/config.xml
+          cp -r res cordova/res
+
+      - name: Normalize config.xml for Cordova Android 14
+        run: |
+          # Cordova Android 14 targets Android 15 / SDK 35.
+          if grep -q "android-targetSdkVersion" cordova/config.xml; then
+            sed -i 's/android-targetSdkVersion" value="[0-9]*"/android-targetSdkVersion" value="35"/' cordova/config.xml
+          else
+            sed -i '/<\/widget>/i \    <preference name="android-targetSdkVersion" value="35" \/>' cordova/config.xml
+          fi
+          # Keep compile SDK at 35 to match the Cordova Android 14 platform sources.
+          if grep -q "android-compileSdkVersion" cordova/config.xml; then
+            sed -i 's/android-compileSdkVersion" value="[0-9]*"/android-compileSdkVersion" value="35"/' cordova/config.xml
+          else
+            sed -i '/<\/widget>/i \    <preference name="android-compileSdkVersion" value="35" \/>' cordova/config.xml
+          fi
+          # Keep a known-good Gradle wrapper version for CI reproducibility.
+          if grep -q "android-gradle-distribution-url" cordova/config.xml; then
+            sed -i 's|android-gradle-distribution-url" value=".*"|android-gradle-distribution-url" value="https://services.gradle.org/distributions/gradle-8.14.2-bin.zip"|' cordova/config.xml
+          else
+            sed -i '/<\/widget>/i \    <preference name="android-gradle-distribution-url" value="https://services.gradle.org/distributions/gradle-8.14.2-bin.zip" \/>' cordova/config.xml
+          fi
+
+      - name: Copy hooks into Cordova project
+        run: cp -r hooks cordova/hooks
+
+      - name: Prepare Cordova www
+        run: |
+          rm -rf cordova/www/*
+          cp -r assets cordova/www/
+          cp -r src cordova/www/
+          cp -r icons cordova/www/ || true
+          cp index.html cordova/www/
+          cp manifest.json cordova/www/ || true
+          cp favicon.ico cordova/www/ || true
+          cp app-original.js cordova/www/ || true
+          # Inject cordova.js into index.html
+          sed -i 's/<\/head>/<script src="cordova.js"><\/script><\/head>/' cordova/www/index.html
+
+      - name: Prepare Cordova Android
+        working-directory: cordova
+        run: cordova prepare android
+
+      - name: Force compileSdkVersion 35 for Cordova Android 14
+        run: |
+          CONFIG=cordova/platforms/android/cdv-gradle-config.json
+          echo "=== Before patch ==="
+          cat "$CONFIG"
+          node -e "
+            const fs = require('fs');
+            const c = JSON.parse(fs.readFileSync('$CONFIG', 'utf8'));
+            c.COMPILE_SDK_VERSION = 35;
+            fs.writeFileSync('$CONFIG', JSON.stringify(c, null, 2));
+          "
+          echo "=== After patch ==="
+          cat "$CONFIG"
+
+      - name: Build Cordova Android (APK)
+        working-directory: cordova
+        env:
+          CORDOVA_ANDROID_GRADLE_DISTRIBUTION_URL: https://services.gradle.org/distributions/gradle-8.14.2-bin.zip
+        run: cordova compile android --debug --packageType=apk
+
+      - name: Save original APK
+        run: cp cordova/platforms/android/app/build/outputs/apk/debug/*.apk ./game-original.apk
+
+      - name: Bundle JS modules with esbuild
+        run: |
+          npx --yes esbuild src/phaser/boot-entry.js --bundle --format=iife --outfile=lib/boot.bundle.js
+
+      - name: Prepare Cordova www for phaser-game
+        run: |
+          rm -rf cordova/www/*
+          cp -r assets cordova/www/
+          cp -r src cordova/www/
+          cp -r lib cordova/www/
+          cp -r icons cordova/www/ || true
+          cp manifest.json cordova/www/ || true
+          cp favicon.ico cordova/www/ || true
+          cp phaser-game.html cordova/www/
+          cp level-editor.html cordova/www/
+          cp boss-viewer.html cordova/www/
+          cp boss-attack-viewer.html cordova/www/
+          sed -i 's/<\/head>/<script src="cordova.js"><\/script><\/head>/' cordova/www/phaser-game.html
+          sed -i 's/<\/head>/<script src="cordova.js"><\/script><\/head>/' cordova/www/level-editor.html
+
+          # Replace ES module boot script with bundled version for Cordova
+          sed -i '/<script type="module">/,/<\/script>/c\<script src="./lib/boot.bundle.js"></script>' cordova/www/phaser-game.html
+
+      - name: Update config.xml for phaser-game entry point
+        run: sed -i 's|<content src="index.html" />|<content src="phaser-game.html" />|' cordova/config.xml
+
+      - name: Prepare Cordova Android (phaser-game)
+        working-directory: cordova
+        run: cordova prepare android
+
+      - name: Build Cordova Android (phaser-game APK)
+        working-directory: cordova
+        env:
+          CORDOVA_ANDROID_GRADLE_DISTRIBUTION_URL: https://services.gradle.org/distributions/gradle-8.14.2-bin.zip
+        run: cordova compile android --debug --packageType=apk
+
+      - name: Save phaser-game APK
+        run: cp cordova/platforms/android/app/build/outputs/apk/debug/*.apk ./phaser-game.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-apk
+          path: ./game-original.apk
+
+      - name: Upload phaser-game APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: phaser-game-apk
+          path: ./phaser-game.apk
+
+  electron:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Prepare Electron app
+        run: |
+          cd electron
+          mkdir -p www icons
+          cp -r ../assets www/
+          cp -r ../src www/
+          cp -r ../lib www/
+          cp ../icons/icon-512.png icons/icon-512.png || true
+          cp ../phaser-game.html www/phaser-game.html
+          cp ../manifest.json www/ || true
+          cp ../favicon.ico www/ || true
+
+      - name: Bundle JS modules with esbuild for Electron
+        run: |
+          npx --yes esbuild src/phaser/boot-entry.js --bundle --format=iife --outfile=electron/www/lib/boot.bundle.js
+          sed -i '/<script type="module">/,/<\/script>/c\<script src="./lib/boot.bundle.js"></script>' electron/www/phaser-game.html
+
+      - name: Install Electron dependencies
+        working-directory: electron
+        run: npm install
+
+      - name: Build AppImage
+        working-directory: electron
+        run: npx electron-builder --linux AppImage --publish never
+
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-appimage
+          path: electron/dist/*.AppImage
+
+  ps2:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install Pillow
+          sudo apt-get install -y genisoimage
+
+      - name: Build PS2 assets
+        run: |
+          cd src/ps2/deploy
+          bash build.sh
+
+      - name: Prepare ISO root
+        run: |
+          mkdir -p iso_root
+          # Copy build output
+          cp src/ps2/deploy/build/main.js iso_root/main.js
+          cp -r src/ps2/deploy/build/assets iso_root/assets
+
+          # ATHA_000.01 is athena.elf renamed for PS2 ISO 8.3 naming
+          cp src/ps2/deploy/build/athena.elf iso_root/ATHA_000.01
+
+          # SYSTEM.CNF — PS2 boot descriptor
+          printf 'BOOT2 = cdrom0:\\ATHA_000.01;1\nVER = 1.00\nVMODE = NTSC\n' > iso_root/SYSTEM.CNF
+
+          # athena.ini — AthenaEnv v4 configuration
+          printf 'boot_logo = false\ndark_mode = true\ndefault_script = "main.js"\n\n# IOP module loading\naudsrv = true\n' > iso_root/athena.ini
+
+      - name: Create PS2 ISO
+        run: |
+          genisoimage -udf -l -allow-lowercase -allow-multidot -o ps2.iso iso_root/
+          ls -lh ps2.iso
+
+      - name: Upload PS2 ISO artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ps2-iso
+          path: ./ps2.iso
+
+  web:
+    needs: [cordova, electron, ps2]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build for GitHub Pages
+        run: |
+          mkdir dist
+          cp -r assets dist/
+          cp -r src dist/
+          cp -r lib dist/
+          cp -r icons dist/ || true
+          cp index.html dist/
+          cp phaser-game.html dist/
+          cp level-editor.html dist/
+          cp boss-viewer.html dist/
+          cp boss-attack-viewer.html dist/
+          cp support.html dist/
+          cp manifest.json dist/ || true
+          cp favicon.ico dist/ || true
+          cp app-original.js dist/ || true
+
+      - name: Download APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: game-apk
+          path: ./apk-tmp
+
+      - name: Download phaser-game APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: phaser-game-apk
+          path: ./phaser-apk-tmp
+
+      - name: Download AppImage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: electron-appimage
+          path: ./appimage-tmp
+
+      - name: Download PS2 ISO artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ps2-iso
+          path: ./ps2-tmp
+
+      - name: Copy APKs, AppImage, and PS2 ISO to dist
+        run: |
+          cp apk-tmp/*.apk dist/game.apk
+          cp phaser-apk-tmp/*.apk dist/phaser-game.apk
+          cp appimage-tmp/*.AppImage dist/phaser-game.AppImage
+          cp phaser-game.desktop dist/phaser-game.desktop
+          cp ps2-tmp/ps2.iso dist/ps2.iso
+          ls -l dist/game.apk dist/phaser-game.apk dist/phaser-game.AppImage dist/phaser-game.desktop dist/ps2.iso
+          rm -rf apk-tmp phaser-apk-tmp appimage-tmp ps2-tmp
+
+      - name: Create downloadable zip of built site
+        run: |
+          cd dist
+          zip -r ../site.zip .
+          cd ..
+          cp site.zip dist/site.zip
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./dist
+
+  deploy:
+    needs: web
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
