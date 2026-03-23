@@ -10,3 +10,4 @@ electron/node_modules/
 *.iso
 *.zip
 .DS_Store
+assets/.DS_Store
