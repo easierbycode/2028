@@ -2,10 +2,10 @@
 // Player sprite creation, input handling, damage, barrier
 // Extracted from GameScene: createPlayer, createDragArea, drag handlers, keyboard, playerDamage, playerDie
 
-import { GAME_DIMENSIONS } from "../../constants.js";
-import { gameState } from "../../gameState.js";
+import { GAME_DIMENSIONS } from "../../shared/constants.js";
+import { gameState } from "../../shared/gameState.js";
 import { PLAYER_STATES } from "../../shared/enums/player-boss-states.js";
-import { triggerHaptic } from "../../haptics.js";
+import { triggerHaptic } from "../../shared/haptics.js";
 import { createShadow, updateShadowPosition } from "./Shadow.js";
 import { pollGamepads } from "../GamepadInput.js";
 

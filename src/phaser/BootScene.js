@@ -1,6 +1,6 @@
-import { RESOURCE_PATHS, GAME_DIMENSIONS } from "../constants.js";
-import { gameState } from "../gameState.js";
-import { globals } from "../globals.js";
+import { RESOURCE_PATHS, GAME_DIMENSIONS } from "../shared/constants.js";
+import { gameState } from "../shared/gameState.js";
+import { globals } from "../shared/globals.js";
 
 var EDITOR_PLAY_RECIPE_KEY = "__editorPhaserRecipe__";
 var EDITOR_PLAY_STAGE_KEY = "__editorPhaserStageId__";

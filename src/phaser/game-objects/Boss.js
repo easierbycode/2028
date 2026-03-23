@@ -2,9 +2,9 @@
 // Boss creation, projectile shooting helpers, death, danger check
 // Extracted from GameScene: bossAdd, bossShoot, bossShoot*, bossDie, checkBossDanger, bossShootStart
 
-import { GAME_DIMENSIONS } from "../../constants.js";
-import { gameState } from "../../gameState.js";
-import { triggerHaptic } from "../../haptics.js";
+import { GAME_DIMENSIONS } from "../../shared/constants.js";
+import { gameState } from "../../shared/gameState.js";
+import { triggerHaptic } from "../../shared/haptics.js";
 import { createShadow, updateShadowPosition } from "./Shadow.js";
 import { showBossExplosion, showHitImpact } from "../effects/Explosions.js";
 import {

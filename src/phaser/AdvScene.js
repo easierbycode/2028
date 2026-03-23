@@ -1,5 +1,5 @@
-import { GAME_DIMENSIONS, LANG } from "../constants.js";
-import { gameState } from "../gameState.js";
+import { GAME_DIMENSIONS, LANG } from "../shared/constants.js";
+import { gameState } from "../shared/gameState.js";
 import { pollGamepads } from "./GamepadInput.js";
 
 var ADV_SCENARIO_JA = {

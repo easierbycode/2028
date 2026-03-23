@@ -16,8 +16,8 @@ window.onunhandledrejection = function (e) {
     console.error("Unhandled rejection:", e.reason);
 };
 
-import { gameState } from "../gameState.js";
-import { initializeFirebaseScores } from "../firebaseScores.js";
+import { gameState } from "../shared/gameState.js";
+import { initializeFirebaseScores } from "../shared/firebaseScores.js";
 import { createPhaserGame } from "./PhaserGame.js";
 
 function waitFor(ms) {

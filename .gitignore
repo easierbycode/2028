@@ -1,0 +1,13 @@
+node_modules/
+dist/
+cordova/
+lib/boot.bundle.js
+electron/www/
+electron/dist/
+electron/node_modules/
+*.apk
+*.AppImage
+*.iso
+*.zip
+.DS_Store
+assets/.DS_Store

@@ -1,7 +1,7 @@
 // src/phaser/PhaserGame.js  ← corrected & ready for Phaser 4.0.0-rc.6
 
-import { GAME_DIMENSIONS } from "../constants.js";
-import { syncRuntimeFlagsFromLocation } from "../gameState.js";
+import { GAME_DIMENSIONS } from "../shared/constants.js";
+import { syncRuntimeFlagsFromLocation } from "../shared/gameState.js";
 
 import { BootScene } from "./BootScene.js";
 import { PhaserTitleScene } from "./TitleScene.js";

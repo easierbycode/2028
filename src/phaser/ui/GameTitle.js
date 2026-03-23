@@ -1,5 +1,5 @@
-import { GAME_DIMENSIONS } from "../../constants.js";
-import { gameState } from "../../gameState.js";
+import { GAME_DIMENSIONS } from "../../shared/constants.js";
+import { gameState } from "../../shared/gameState.js";
 
 var GW = GAME_DIMENSIONS.WIDTH;
 var GH = GAME_DIMENSIONS.HEIGHT;

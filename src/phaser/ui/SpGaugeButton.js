@@ -1,5 +1,5 @@
-import { GAME_DIMENSIONS } from "../../constants.js";
-import { triggerHaptic } from "../../haptics.js";
+import { GAME_DIMENSIONS } from "../../shared/constants.js";
+import { triggerHaptic } from "../../shared/haptics.js";
 
 var GW = GAME_DIMENSIONS.WIDTH;
 var GCY = GAME_DIMENSIONS.CENTER_Y;

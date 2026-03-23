@@ -2,11 +2,11 @@
 // Enemy creation, waves, shooting, death, per-frame update
 // Extracted from GameScene methods: createEnemy, enemyWave, enemyShoot, enemyDie
 
-import { GAME_DIMENSIONS } from "../../constants.js";
-import { gameState } from "../../gameState.js";
+import { GAME_DIMENSIONS } from "../../shared/constants.js";
+import { gameState } from "../../shared/gameState.js";
 import { PLAYER_STATES } from "../../shared/enums/player-boss-states.js";
 import { createShadow, updateShadowPosition } from "./Shadow.js";
-import { triggerHaptic } from "../../haptics.js";
+import { triggerHaptic } from "../../shared/haptics.js";
 
 var GW = GAME_DIMENSIONS.WIDTH;
 var GH = GAME_DIMENSIONS.HEIGHT;

@@ -1,4 +1,4 @@
-import { GAME_DIMENSIONS } from "../constants.js";
+import { GAME_DIMENSIONS } from "../shared/constants.js";
 
 function openExternalUrl(url) {
     if (!url) {
