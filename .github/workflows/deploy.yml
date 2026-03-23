@@ -122,7 +122,7 @@ jobs:
         run: |
           npx --yes esbuild src/phaser/boot-entry.js --bundle --format=iife --outfile=lib/boot.bundle.js
 
-      - name: Prepare Cordova www for phaser-game
+      - name: Prepare Cordova www for game
         run: |
           rm -rf cordova/www/*
           cp -r assets cordova/www/
@@ -131,43 +131,40 @@ jobs:
           cp -r icons cordova/www/ || true
           cp manifest.json cordova/www/ || true
           cp favicon.ico cordova/www/ || true
-          cp phaser-game.html cordova/www/
+          cp index.html cordova/www/
           cp level-editor.html cordova/www/
           cp boss-viewer.html cordova/www/
           cp boss-attack-viewer.html cordova/www/
-          sed -i 's/<\/head>/<script src="cordova.js"><\/script><\/head>/' cordova/www/phaser-game.html
+          sed -i 's/<\/head>/<script src="cordova.js"><\/script><\/head>/' cordova/www/index.html
           sed -i 's/<\/head>/<script src="cordova.js"><\/script><\/head>/' cordova/www/level-editor.html
 
           # Replace ES module boot script with bundled version for Cordova
-          sed -i '/<script type="module">/,/<\/script>/c\<script src="./lib/boot.bundle.js"></script>' cordova/www/phaser-game.html
+          sed -i '/<script type="module">/,/<\/script>/c\<script src="./lib/boot.bundle.js"></script>' cordova/www/index.html
 
-      - name: Update config.xml for phaser-game entry point
-        run: sed -i 's|<content src="index.html" />|<content src="phaser-game.html" />|' cordova/config.xml
-
-      - name: Prepare Cordova Android (phaser-game)
+      - name: Prepare Cordova Android (game)
         working-directory: cordova
         run: cordova prepare android
 
-      - name: Build Cordova Android (phaser-game APK)
+      - name: Build Cordova Android (game APK)
         working-directory: cordova
         env:
           CORDOVA_ANDROID_GRADLE_DISTRIBUTION_URL: https://services.gradle.org/distributions/gradle-8.14.2-bin.zip
         run: cordova compile android --debug --packageType=apk
 
-      - name: Save phaser-game APK
-        run: cp cordova/platforms/android/app/build/outputs/apk/debug/*.apk ./phaser-game.apk
+      - name: Save game APK
+        run: cp cordova/platforms/android/app/build/outputs/apk/debug/*.apk ./game.apk
 
-      - name: Upload APK artifact
+      - name: Upload game-original APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-original-apk
+          path: ./game-original.apk
+
+      - name: Upload game APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: game-apk
-          path: ./game-original.apk
-
-      - name: Upload phaser-game APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: phaser-game-apk
-          path: ./phaser-game.apk
+          path: ./game.apk
 
   electron:
     runs-on: ubuntu-latest
@@ -186,14 +183,14 @@ jobs:
           cp -r ../src www/
           cp -r ../lib www/
           cp ../icons/icon-512.png icons/icon-512.png || true
-          cp ../phaser-game.html www/phaser-game.html
+          cp ../index.html www/index.html
           cp ../manifest.json www/ || true
           cp ../favicon.ico www/ || true
 
       - name: Bundle JS modules with esbuild for Electron
         run: |
           npx --yes esbuild src/phaser/boot-entry.js --bundle --format=iife --outfile=electron/www/lib/boot.bundle.js
-          sed -i '/<script type="module">/,/<\/script>/c\<script src="./lib/boot.bundle.js"></script>' electron/www/phaser-game.html
+          sed -i '/<script type="module">/,/<\/script>/c\<script src="./lib/boot.bundle.js"></script>' electron/www/index.html
 
       - name: Install Electron dependencies
         working-directory: electron
@@ -273,7 +270,6 @@ jobs:
           cp -r lib dist/
           cp -r icons dist/ || true
           cp index.html dist/
-          cp phaser-game.html dist/
           cp level-editor.html dist/
           cp boss-viewer.html dist/
           cp boss-attack-viewer.html dist/
@@ -282,16 +278,16 @@ jobs:
           cp favicon.ico dist/ || true
           cp app-original.js dist/ || true
 
-      - name: Download APK artifact
+      - name: Download game-original APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: game-original-apk
+          path: ./apk-tmp
+
+      - name: Download game APK artifact
         uses: actions/download-artifact@v4
         with:
           name: game-apk
-          path: ./apk-tmp
-
-      - name: Download phaser-game APK artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: phaser-game-apk
           path: ./phaser-apk-tmp
 
       - name: Download AppImage artifact
@@ -308,12 +304,12 @@ jobs:
 
       - name: Copy APKs, AppImage, and PS2 ISO to dist
         run: |
-          cp apk-tmp/*.apk dist/game.apk
-          cp phaser-apk-tmp/*.apk dist/phaser-game.apk
-          cp appimage-tmp/*.AppImage dist/phaser-game.AppImage
-          cp phaser-game.desktop dist/phaser-game.desktop
+          cp apk-tmp/*.apk dist/game-original.apk
+          cp phaser-apk-tmp/*.apk dist/game.apk
+          cp appimage-tmp/*.AppImage dist/game.AppImage
+          cp game.desktop dist/game.desktop
           cp ps2-tmp/ps2.iso dist/ps2.iso
-          ls -l dist/game.apk dist/phaser-game.apk dist/phaser-game.AppImage dist/phaser-game.desktop dist/ps2.iso
+          ls -l dist/game-original.apk dist/game.apk dist/game.AppImage dist/game.desktop dist/ps2.iso
           rm -rf apk-tmp phaser-apk-tmp appimage-tmp ps2-tmp
 
       - name: Create downloadable zip of built site
