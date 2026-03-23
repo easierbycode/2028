@@ -108,13 +108,13 @@ function createWindow() {
         },
     });
 
-    win.loadURL("app://game/phaser-game.html?level=2028");
+    win.loadURL("app://game/index.html?level=2028");
 
     win.webContents.on("did-finish-load", function () {
         // When xrandr physically rotated the display, mark <html> so the
         // CSS rotation fallback is skipped (it would double-rotate).
         // When xrandr failed, do NOT add any class — let the CSS rotation
-        // hack in phaser-game.html handle portrait layout.
+        // hack in index.html handle portrait layout.
         if (rotated) {
             win.webContents.executeJavaScript(
                 "document.documentElement.classList.add('electron-rotated')"
