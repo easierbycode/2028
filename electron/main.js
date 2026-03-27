@@ -108,7 +108,7 @@ function createWindow() {
         },
     });
 
-    win.loadURL("app://game/index.html?level=2028");
+    win.loadURL("app://game/index.html?level=foo");
 
     win.webContents.on("did-finish-load", function () {
         // When xrandr physically rotated the display, mark <html> so the
