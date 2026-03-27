@@ -197,8 +197,8 @@ print(f"  Wrote {json_dst.split('/')[-1]} (scaled coords, displayScale={1.0/scal
 PYEOF
 done
 
-# Process level_2028 atlas (same downscaling as above)
-for atlas in level_2028_atlas; do
+# Process level_foo atlas (same downscaling as above)
+for atlas in level_foo_atlas; do
     JSON_SRC="$PS2_ASSETS/${atlas}.json"
     PNG_SRC="$PS2_ASSETS/${atlas}.png"
     JSON_DST="$BUILD_DIR/assets/${atlas}.json"
@@ -284,10 +284,10 @@ PYEOF
     fi
 done
 
-# Copy level_2028 Firebase level data
-if [ -f "$PS2_ASSETS/level_2028.json" ]; then
-    cp "$PS2_ASSETS/level_2028.json" "$BUILD_DIR/assets/level_2028.json"
-    echo "  Copied level_2028.json"
+# Copy level_foo Firebase level data
+if [ -f "$PS2_ASSETS/level_foo.json" ]; then
+    cp "$PS2_ASSETS/level_foo.json" "$BUILD_DIR/assets/level_foo.json"
+    echo "  Copied level_foo.json"
 fi
 
 # Copy cyber-liberty player spritesheet (small enough, no downscale needed)
