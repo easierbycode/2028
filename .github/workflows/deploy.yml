@@ -1,4 +1,4 @@
-name: Build & Deploy (GitHub Pages + Cordova + Electron)
+name: Build & Deploy (Deno Deploy + Cordova + Electron)
 
 on:
   push:
@@ -7,11 +7,10 @@ on:
 
 permissions:
   contents: read
-  pages: write
   id-token: write
 
 concurrency:
-  group: "pages"
+  group: "deploy"
   cancel-in-progress: true
 
 jobs:
@@ -252,31 +251,30 @@ jobs:
           name: ps2-iso
           path: ./ps2.iso
 
-  web:
+  deploy:
     needs: [cordova, electron, ps2]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - uses: denoland/setup-deno@v2
         with:
-          node-version: 20
+          deno-version: v2.x
 
-      - name: Build for GitHub Pages
+      - name: Copy game assets into Fresh static directory
+        working-directory: deno-fresh
         run: |
-          mkdir dist
-          cp -r assets dist/
-          cp -r src dist/
-          cp -r lib dist/
-          cp -r icons dist/ || true
-          cp index.html dist/
-          cp level-editor.html dist/
-          cp boss-viewer.html dist/
-          cp boss-attack-viewer.html dist/
-          cp support.html dist/
-          cp manifest.json dist/ || true
-          cp favicon.ico dist/ || true
-          cp app-original.js dist/ || true
+          mkdir -p static
+          cp -r ../assets static/
+          cp -r ../src static/
+          cp -r ../lib static/
+          cp -r ../icons static/ || true
+          cp ../manifest.json static/ || true
+          cp ../favicon.ico static/ || true
+          cp ../level-editor.html static/
+          cp ../boss-viewer.html static/
+          cp ../boss-attack-viewer.html static/
+          cp ../support.html static/
 
       - name: Download game-original APK artifact
         uses: actions/download-artifact@v4
@@ -302,34 +300,24 @@ jobs:
           name: ps2-iso
           path: ./ps2-tmp
 
-      - name: Copy APKs, AppImage, and PS2 ISO to dist
+      - name: Copy APKs, AppImage, and PS2 ISO to static
         run: |
-          cp apk-tmp/*.apk dist/game-original.apk
-          cp phaser-apk-tmp/*.apk dist/game.apk
-          cp appimage-tmp/*.AppImage dist/game.AppImage
-          cp game.desktop dist/game.desktop
-          cp ps2-tmp/ps2.iso dist/ps2.iso
-          ls -l dist/game-original.apk dist/game.apk dist/game.AppImage dist/game.desktop dist/ps2.iso
+          cp apk-tmp/*.apk deno-fresh/static/game-original.apk
+          cp phaser-apk-tmp/*.apk deno-fresh/static/game.apk
+          cp appimage-tmp/*.AppImage deno-fresh/static/game.AppImage
+          cp game.desktop deno-fresh/static/game.desktop
+          cp ps2-tmp/ps2.iso deno-fresh/static/ps2.iso
+          ls -l deno-fresh/static/game-original.apk deno-fresh/static/game.apk deno-fresh/static/game.AppImage deno-fresh/static/game.desktop deno-fresh/static/ps2.iso
           rm -rf apk-tmp phaser-apk-tmp appimage-tmp ps2-tmp
 
-      - name: Create downloadable zip of built site
+      - name: Create downloadable zip
         run: |
-          cd dist
-          zip -r ../site.zip .
-          cd ..
-          cp site.zip dist/site.zip
+          cd deno-fresh/static
+          zip -r ../../site.zip .
+          cp ../../site.zip site.zip
 
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./dist
-
-  deploy:
-    needs: web
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Deploy to Deno Deploy
+        working-directory: deno-fresh
+        env:
+          DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
+        run: deno deploy --prod
