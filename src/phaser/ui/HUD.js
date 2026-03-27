@@ -72,6 +72,19 @@ export class PhaserHUD {
         this.scoreNum.setValue(scoreCount);
     }
 
+    updateScoreText() {
+        if (!this.scoreNum) return;
+        var targets = this.scoreNum.sprites || [];
+        if (targets.length === 0) return;
+        this.scene.tweens.add({
+            targets: targets,
+            duration: 200,
+            tint: { from: 0x0000ff, to: 0xffffff },
+            scale: { from: 1.2, to: 1 },
+            repeat: 2,
+        });
+    }
+
     updateWorldBest(scoreCount) {
         var best = Math.max(getDisplayedHighScore(), scoreCount);
         this.worldBestText.setText(getWorldBestLabel() + " " + String(best));

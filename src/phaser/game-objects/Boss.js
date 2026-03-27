@@ -641,6 +641,7 @@ export function bossDie(scene, boss) {
     }
     var ratio = Math.max(1, Math.ceil(scene.comboCount / 10));
     scene.scoreCount += scene.bossScore * ratio;
+    scene.updateScoreText();
 
     scene.showScorePopup(boss.x, boss.y, scene.bossScore, ratio);
 

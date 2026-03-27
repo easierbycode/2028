@@ -1098,6 +1098,7 @@ export class PhaserGameScene extends Phaser.Scene {
                             this.spGauge = Math.min(100, this.spGauge + ebSpgage);
                             this.updateSpGauge();
                             this.showScorePopup(eBullet.x, eBullet.y, ebScore, ebRatio);
+                            this.updateScoreText();
                         }
                         this.showExplosion(eBullet.x, eBullet.y);
                         this.playSound("se_explosion", 0.35);
@@ -1200,6 +1201,19 @@ export class PhaserGameScene extends Phaser.Scene {
             var best = Math.max(getDisplayedHighScore(), this.scoreCount);
             this.worldBestText.setText(getWorldBestLabel() + " " + String(best));
         }
+    }
+
+    updateScoreText() {
+        if (!this.scoreSmallNum || !this.scoreSmallNum.container) return;
+        var targets = this.scoreSmallNum.sprites || this.scoreSmallNum.container.list || [];
+        if (targets.length === 0) return;
+        this.tweens.add({
+            targets: targets,
+            duration: 200,
+            tint: { from: 0x0000ff, to: 0xffffff },
+            scale: { from: 1.2, to: 1 },
+            repeat: 2,
+        });
     }
 
     _setComboNum(num) {

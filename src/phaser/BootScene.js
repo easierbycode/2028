@@ -147,11 +147,11 @@ export class BootScene extends Phaser.Scene {
         var self = this;
 
         function ensureLoadingPreview() {
-            if (self.loadingBg || !self.textures.exists("loading_bg") || !self.textures.exists("loading0")) {
+            if (self.loadingBg || !self.textures.exists("title_bg") || !self.textures.exists("loading0")) {
                 return;
             }
 
-            self.loadingBg = self.add.image(cx, cy, "loading_bg");
+            self.loadingBg = self.add.image(cx, cy, "title_bg");
             self.loadingBg.setAlpha(0.09);
 
             self.loadingG = self.add.image(cx, cy, "loading0");
@@ -198,7 +198,7 @@ export class BootScene extends Phaser.Scene {
             }, 6700);
         });
 
-        this.load.on("filecomplete-image-loading_bg", ensureLoadingPreview);
+        this.load.on("filecomplete-image-title_bg", ensureLoadingPreview);
         this.load.on("filecomplete-image-loading0", ensureLoadingPreview);
 
         this.load.on("loaderror", function (file) {
@@ -302,7 +302,6 @@ export class BootScene extends Phaser.Scene {
             this.load.image("stage_end" + i, stageEndPaths[i]);
         }
 
-        this.load.image("loading_bg", "assets/img/loading/loading_bg.png");
         this.load.image("loading0", "assets/img/loading/loading0.gif");
         this.load.image("loading1", "assets/img/loading/loading1.gif");
         this.load.image("loading2", "assets/img/loading/loading2.gif");

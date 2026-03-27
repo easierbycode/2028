@@ -1,0 +1,25 @@
+{
+  "tasks": {
+    "dev": "deno run -A --watch=static/,routes/ dev.ts",
+    "build": "deno run -A dev.ts build",
+    "start": "deno run -A main.ts",
+    "setup": "bash setup-static.sh",
+    "deploy": "bash setup-static.sh && deno deploy",
+    "deploy:prod": "bash setup-static.sh && deno deploy --prod",
+    "deploy:create": "bash setup-static.sh && deno deploy create --source local --framework-preset fresh",
+    "mac:build": "deno compile --target aarch64-apple-darwin --allow-net --allow-read --allow-env --include static --include routes --output dist/2028ai-mac main.ts",
+    "mac:build-intel": "deno compile --target x86_64-apple-darwin --allow-net --allow-read --allow-env --include static --include routes --output dist/2028ai-mac-intel main.ts"
+  },
+  "imports": {
+    "@/": "./",
+    "fresh": "jsr:@fresh/core@^2.0.0-alpha",
+    "fresh/dev": "jsr:@fresh/core@^2.0.0-alpha/dev",
+    "preact": "npm:preact@^10.25.0",
+    "preact/": "npm:preact@^10.25.0/"
+  },
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact"
+  },
+  "nodeModulesDir": "none"
+}

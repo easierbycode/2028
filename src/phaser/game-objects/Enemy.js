@@ -197,6 +197,7 @@ export function enemyDie(scene, enemy, isSp) {
     var ratio = Math.max(1, Math.ceil(scene.comboCount / 10));
     scene.scoreCount += score * ratio;
     scene.comboTimeCnt = 100;
+    scene.updateScoreText();
 
     if (!isSp) {
         scene.spGauge = Math.min(100, scene.spGauge + spgage);

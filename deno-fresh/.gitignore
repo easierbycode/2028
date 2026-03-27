@@ -1,0 +1,13 @@
+_fresh/
+node_modules/
+dist/
+
+# Symlinked game assets (managed by setup-static.sh)
+static/src
+static/assets
+static/lib
+static/icons
+static/manifest.json
+static/favicon.ico
+static/level-editor.html
+static/support.html
